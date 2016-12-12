@@ -15,7 +15,7 @@ import (
 )
 
 var logger = log.New(os.Stdout, "", log.Ldate|log.Ltime)
-var version = "version info : 1.0.0.0 \n" + "compiled with:" + " go1.5.4.linux-amd64"
+var version = "version info : 1.0.0.0 \n" + "compiled with:" + " go1.5.4.linux-amd64@20161026"
 
 func main() {
 
@@ -54,6 +54,8 @@ func main() {
 		return
 	}
 
+	passwd := cfg["DEFAULT:"+"passwd"]
+
 	// 获取数据加载的配置信息 fplx sjlx sql_text col
 	conf, err := goracle.DumpTable(uid, sql, col, key, del)
 	if err != nil {
@@ -69,13 +71,13 @@ func main() {
 
 	for _, v := range tasks {
 
-		loadParallel(conf, v, proxy, uid, batch)
+		loadParallel(conf, v, proxy, uid, batch, passwd)
 
 	}
 
 }
 
-func loadParallel(conf map[string]map[string]string, v map[string]string, proxy map[string]string, uid string, batch int) error {
+func loadParallel(conf map[string]map[string]string, v map[string]string, proxy map[string]string, uid string, batch int, passwd string) error {
 
 	taskSQL := conf[v["fplx_dm"]+"_"+v["sjlx_dm"]]["sql_text"] + " where kpyf = '" + v["kpyf"] + "' and tslsh='" + v["tslsh"] + "'"
 
@@ -90,7 +92,7 @@ func loadParallel(conf map[string]map[string]string, v map[string]string, proxy 
 	url := proxy[utils.SubStr(v["kpyf"], 4, 2)]
 	logger.Println("目标代理:", url)
 
-	err := loadTask(uid, taskSQL, conf[v["fplx_dm"]+"_"+v["sjlx_dm"]]["cols"], conf[v["fplx_dm"]+"_"+v["sjlx_dm"]]["sjlx_dm"], url, batch)
+	err := loadTask(uid, taskSQL, conf[v["fplx_dm"]+"_"+v["sjlx_dm"]]["cols"], conf[v["fplx_dm"]+"_"+v["sjlx_dm"]]["sjlx_dm"], url, batch, passwd)
 	if err != nil {
 		updTask(uid, "update fpcy_sjjzjk set jzzt_dm='3',jzsj=sysdate,servername='x' where 1 = 1 "+" and tslsh = "+v["tslsh"]+" and fplx_dm = "+v["fplx_dm"]+" and sjlx_dm = "+v["sjlx_dm"]+" and kpyf = "+v["kpyf"]+" and mode_ = "+v["mode_"])
 		return err
@@ -130,7 +132,7 @@ func updTask(uid, sql string) error {
 	return nil
 }
 
-func loadTask(uid, sql, cols, taskType, url string, batch int) error {
+func loadTask(uid, sql, cols, taskType, url string, batch int, passwd string) error {
 
 	conn, err := connect.GetRawConnection(uid)
 	if err != nil {
@@ -168,12 +170,12 @@ func loadTask(uid, sql, cols, taskType, url string, batch int) error {
 
 		if taskType == "01" {
 
-			err = LoadingFPXX(records, url, strings.Split(cols, ","), columns)
+			err = LoadingFPXX(records, url, strings.Split(cols, ","), columns, passwd)
 			if err != nil {
 				break
 			}
 		} else if taskType == "02" {
-			err = LoadingHWXX(records, url, strings.Split(cols, ","), columns)
+			err = LoadingHWXX(records, url, strings.Split(cols, ","), columns, passwd)
 			if err != nil {
 				break
 			}
@@ -192,7 +194,7 @@ func loadTask(uid, sql, cols, taskType, url string, batch int) error {
 	return nil
 }
 
-func LoadingFPXX(records [][]interface{}, url string, fields []string, columns []goracle.Column) error {
+func LoadingFPXX(records [][]interface{}, url string, fields []string, columns []goracle.Column, passwd string) error {
 
 	N := len(columns)
 
@@ -200,6 +202,14 @@ func LoadingFPXX(records [][]interface{}, url string, fields []string, columns [
 	if err != nil {
 		logger.Printf("连接 redis 发生错误", err, url)
 		return err
+	}
+
+	if passwd != "" {
+		if _, err := rs.Do("AUTH", passwd); err != nil {
+			logger.Println("AUTH fail.")
+			rs.Close()
+			return err
+		}
 	}
 
 	for _, row := range records { //每行
@@ -250,7 +260,7 @@ func LoadingFPXX(records [][]interface{}, url string, fields []string, columns [
 
 }
 
-func LoadingHWXX(records [][]interface{}, url string, fields []string, columns []goracle.Column) error {
+func LoadingHWXX(records [][]interface{}, url string, fields []string, columns []goracle.Column, passwd string) error {
 
 	N := len(columns)
 
@@ -258,6 +268,14 @@ func LoadingHWXX(records [][]interface{}, url string, fields []string, columns [
 	if err != nil {
 		logger.Printf("连接 redis 发生错误", err, url)
 		return err
+	}
+
+	if passwd != "" {
+		if _, err := rs.Do("AUTH", passwd); err != nil {
+			logger.Println("AUTH fail.")
+			rs.Close()
+			return err
+		}
 	}
 
 	for _, row := range records { //每行
